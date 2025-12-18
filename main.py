@@ -267,5 +267,21 @@ async def timeout_error(ctx, error):
         await ctx.send("❌ Usage: `!timeout @user <minutes> [reason]`")
     elif isinstance(error, commands.BadArgument):
         await ctx.send("❌ Invalid user or time.")
+        
+@bot.command()
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason="No reason provided"):
+    await member.ban(reason=reason)
+    await ctx.send(f"🔨 **{member}** was banned.\nReason: {reason}")
+
+@ban.error
+async def ban_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ You don’t have permission to ban members.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send("❌ Please mention a user to ban.")
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send("❌ I can’t find that user.")
 
 bot.run(token, log_handler=handler, log_level=logging.DEBUG)
+
