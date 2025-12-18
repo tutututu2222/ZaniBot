@@ -1,44 +1,48 @@
 import os
-import re
 import random
 import logging
+import unicodedata
 from datetime import timedelta
 
-import unicodedata
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
+# ===== ENV / LOGGING =====
 load_dotenv()
-token = os.getenv('DISCORD_TOKEN')
+TOKEN = os.getenv("DISCORD_TOKEN")
 
-handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
+handler = logging.FileHandler(
+    filename="discord.log", encoding="utf-8", mode="w"
+)
 
+# ===== INTENTS =====
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
-intents.messages = True
 
-bot = commands.Bot(command_prefix='/', intents=intents)
+bot = commands.Bot(command_prefix="/", intents=intents)
 
-secret_role = "👥Certified  Civilians👥"
+# ===== CONSTANTS =====
+SECRET_ROLE = "👥Certified  Civilians👥"
 ENLIST_CHANNEL_NAME = "✈border✈"
+MOD_LOG_CHANNEL_NAME = "mod-log"
+
 ENLIST_MESSAGE = "`!enlist @yourself` to verify, this gives you access to the rest of the server!"
+
 ken_replies = [
     "its ash you dingus",
     "its ash you stupid",
     "its ash, you disgusting piece of water"
 ]
 
-MOD_LOG_CHANNEL_NAME = "mod-log"
-
-Punctuation = [' ', '.', ',', "'", ':', ';']
+# ===== WORD NORMALIZATION =====
 K = list("kᵍᵁᵘᴊⓐᴏᴋᴚᴭк№𝔺𝔚𝔄𝓀𝒴ҡќҚқӃӄк𝙪")
 E = list("eᴇ℮єε𝔸ᴇᴜëēėĕèéêẹȩε∑ℰ𝔜Ǝ€3ᵉₑᴱеեەیَ")
 N = list("nᴏոћչջηпṅńñņṋℕℵ𝔻ᴎᴥվҢҝҤҥӈӉ𝙫")
 
-EXTRA_MARKS = [chr(cp) for cp in range(0x300, 0x36F + 1)]
+PUNCTUATION = [' ', '.', ',', "'", ':', ';']
 
 CHAR_MAP = {c: 'k' for c in K}
 CHAR_MAP.update({c: 'e' for c in E})
@@ -84,16 +88,17 @@ def contains_ken(text):
             elif char not in E:
                 kcount = keen = case = 0
         elif case == 4:
-            if (char in Punctuation or char == 's')and keen == 2:
+            if (char in PUNCTUATION or char == 's') and keen == 2:
                 kcount = keen = case = 0
-
-            if char in Punctuation and keen != 2:
+            if char in PUNCTUATION and keen != 2:
                 return True
             elif char not in N and char != 's':
                 kcount = keen = case = 0
     if case >= 4 and not (keen == 2 and kcount == 1):
         return True
     return False
+
+# ===== EVENTS =====
 
 @bot.event
 async def on_ready():
@@ -156,11 +161,14 @@ async def on_message(message):
         await message.delete()
         response = random.choice(ken_replies)
         warn = await message.channel.send(
-            f"{message.author.mention}, {response}, say it right, and REMEMBER IT NEXT TIME.")
+            f"{message.author.mention}, {response}, say it right, and REMEMBER IT NEXT TIME."
+        )
         await warn.delete(delay=9)
         return
 
     await bot.process_commands(message)
+
+# ===== COMMANDS =====
 
 @bot.command()
 async def hello(ctx):
@@ -174,7 +182,7 @@ async def enlist(ctx, member: discord.Member = None):
     if member is None:
         member = ctx.author
 
-    role = discord.utils.get(ctx.guild.roles, name=secret_role)
+    role = discord.utils.get(ctx.guild.roles, name=SECRET_ROLE)
 
     if role:
         await member.add_roles(role)
@@ -210,7 +218,7 @@ async def giverole(ctx, member: discord.Member):
 @bot.command()
 @commands.has_permissions(manage_roles=True)
 async def deport(ctx, member: discord.Member):
-    role = discord.utils.get(ctx.guild.roles, name=secret_role)
+    role = discord.utils.get(ctx.guild.roles, name=SECRET_ROLE)
     bot_member = ctx.guild.me
     if member.top_role >= bot_member.top_role:
         await ctx.send("❌ You don't have permission to deport this member!")
@@ -231,7 +239,7 @@ async def purge(ctx, amount: int):
     await ctx.send(f"Deleted {len(deleted)} messages.", delete_after=8)
 
 @bot.command()
-@commands.has_role(secret_role)
+@commands.has_role(SECRET_ROLE)
 async def secret(ctx):
     await ctx.send("Welcome to the socks!")
 
@@ -249,25 +257,49 @@ async def affirm(ctx, *, message: str = ""):
 @bot.command()
 @commands.has_permissions(moderate_members=True)
 async def timeout(ctx, member: discord.Member, minutes: int, *, reason="No reason provided"):
+    if member == ctx.guild.owner:
+        await ctx.send("❌ You cannot timeout the server owner.")
+        return
+
+    if member.top_role >= ctx.guild.me.top_role:
+        await ctx.send("❌ I can't timeout this member due to role hierarchy.")
+        return
+
     duration = timedelta(minutes=minutes)
     await member.timeout(duration, reason=reason)
-    await ctx.send(f"⏱️ **{member}** has been timed out for **{minutes} minutes**.\nReason: {reason}")
 
-@bot.commands()
-@commands.has_permissions(moderate_members = True)
-async def untimeout(ctx, member: discord.Member)
+    await ctx.send(
+        f"⏱️ **{member}** has been timed out for **{minutes} minutes**.\nReason: {reason}"
+    )
+
+    # Log timeout
+    log_channel = discord.utils.get(ctx.guild.channels, name=MOD_LOG_CHANNEL_NAME)
+    if log_channel:
+        embed = discord.Embed(
+            title="⏱️ Member Timed Out",
+            color=discord.Color.orange()
+        )
+        embed.add_field(name="User", value=f"{member} ({member.id})", inline=False)
+        embed.add_field(name="Moderator", value=ctx.author.mention, inline=False)
+        embed.add_field(name="Duration", value=f"{minutes} minutes", inline=False)
+        embed.add_field(name="Reason", value=reason, inline=False)
+        await log_channel.send(embed=embed)
+
+@bot.command()
+@commands.has_permissions(moderate_members=True)
+async def untimeout(ctx, member: discord.Member):
     await member.timeout(None)
-    await ctx.send(f"**{member}** is no longer timed out.")
+    await ctx.send(f"✅ **{member}** is no longer timed out.")
 
 @timeout.error
 async def timeout_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
         await ctx.send("❌ You don't have permission to timeout members.")
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("❌ Usage: `!timeout @user <minutes> [reason]`")
+        await ctx.send("❌ Usage: `/timeout @user <minutes> [reason]`")
     elif isinstance(error, commands.BadArgument):
         await ctx.send("❌ Invalid user or time.")
-        
+
 @bot.command()
 @commands.has_permissions(ban_members=True)
 async def ban(ctx, member: discord.Member, *, reason="No reason provided"):
@@ -283,5 +315,5 @@ async def ban_error(ctx, error):
     elif isinstance(error, commands.BadArgument):
         await ctx.send("❌ I can’t find that user.")
 
-bot.run(token, log_handler=handler, log_level=logging.DEBUG)
-
+# ===== RUN =====
+bot.run(TOKEN, log_handler=handler, log_level=logging.DEBUG)
