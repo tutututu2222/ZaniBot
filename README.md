@@ -1,47 +1,48 @@
 # ZaniBot
 
-ZaniBot is a custom Discord moderation & utility bot built with **Python** and **discord.py**.  
-It’s designed for **server moderation, verification, message filtering, and fun commands**, tailored specifically to my server’s needs. Honestly really proud of this since it's my first project ever.
+ZaniBot is a custom Discord bot built with **Python** and **discord.py**.  
+It is designed for **server moderation, user verification, message filtering, and fun commands**, tailored specifically for my server. This is my first project, and I’m really proud of how it turned out.
 
 ---
 
 ## Features
 
 ### Moderation
-- Timeout / untimeout members
+- Timeout and untimeout members
 - Ban members
-- Purge messages (1–100)
-- Role-based permissions
+- Purge messages (1–100 at a time)
+- Role-based permission management
 - Automatic mod-log for deleted messages
 
 ### Message Filtering
-- Advanced Unicode-normalized word detection
-- Detects disguised variants of banned words
+- Detects disguised or Unicode-normalized variants of banned words
 - Automatically deletes messages and warns users
-- Special-case handling (e.g. “heineken”)
+- Special-case handling for specific words (e.g., “heineken”)
 
 ### Verification System
-- `!enlist` command to verify users
+- `!enlist` command for user verification
 - Assigns a hidden access role
-- Enforces enlist-only channel rules
-- Auto-cleans enlist messages
+- Enforces rules in the verification channel
+- Automatically cleans up enlist messages
 
 ### Automation
-- Sends a welcome DM on member join
+- Sends a welcome DM to new members
 - Re-posts enlist instructions if deleted
-- Prevents off-topic messages in verification channel
+- Prevents off-topic messages in verification channels
 
-### Utility & Fun
+### Utility and Fun
 - `/hello` greeting command
-- `/secret` role-locked command
+- `/secret` role-restricted command
 - `/affirm` meme command
-- Randomized response messages
+- Randomized response messages for fun interactions
+- `!meme` command for fetching memes from Reddit
+- Utility commands: `!userinfo`, `!serverinfo`, `!avatar`, `!whois`
 
 ---
 
 ## Required Bot Permissions
 
-ZaniBot **must be granted the following permissions** to function correctly:
+ZaniBot requires the following permissions to operate correctly:
 
 ### General
 - View Channels
@@ -50,8 +51,8 @@ ZaniBot **must be granted the following permissions** to function correctly:
 - Embed Links
 
 ### Moderation
-- Manage Messages (purge, filtering)
-- Moderate Members (timeouts)
+- Manage Messages (for purging and filtering)
+- Moderate Members (for timeouts)
 - Ban Members
 - Manage Roles
 
@@ -60,8 +61,8 @@ ZaniBot **must be granted the following permissions** to function correctly:
 - Use External Emojis
 - Add Reactions
 
-> **Important:**  
-> The bot’s role **must be higher** than any role it needs to manage or moderate.
+**Important:**  
+The bot’s role must be higher than any role it needs to manage or moderate.
 
 ---
 
@@ -69,4 +70,4 @@ ZaniBot **must be granted the following permissions** to function correctly:
 
 ### Install dependencies
 ```bash
-pip install -U discord.py python-dotenv
+pip install -U discord.py python-dotenv aiohttp
