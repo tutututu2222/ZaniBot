@@ -71,3 +71,5 @@ The bot’s role must be higher than any role it needs to manage or moderate.
 ### Install dependencies
 ```bash
 pip install -U discord.py python-dotenv aiohttp
+
+# really bad codes, not expecting anyone to use it, BUT if you still decide to use it, a thank you somewhere would be appreciated.
