@@ -1,20 +1,25 @@
 import os
+import re
 import random
 import logging
 import unicodedata
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import discord
 from discord.ext import commands
+from discord import app_commands
 from dotenv import load_dotenv
 import aiohttp
 
-# ===== ENV / LOGGING =====
+# ===== ENV =====
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
+# ===== LOGGING =====
 handler = logging.FileHandler(
-    filename="discord.log", encoding="utf-8", mode="w"
+    filename="discord.log",
+    encoding="utf-8",
+    mode="w"
 )
 
 # ===== INTENTS =====
@@ -23,224 +28,184 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix="/", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ===== CONSTANTS =====
-SECRET_ROLE = "👥Certified  Civilians👥"
 ENLIST_CHANNEL_NAME = "✈border✈"
 MOD_LOG_CHANNEL_NAME = "mod-log"
-ENLIST_MESSAGE = "`!enlist @yourself` to verify, this gives you access to the rest of the server!"
+ENLIST_MESSAGE = "`/enlist` to verify and access the server."
+
 ken_replies = [
     "its ash you dingus",
     "its ash you stupid",
     "its ash, you disgusting piece of water"
 ]
 
-# ===== WORD NORMALIZATION =====
-K = list("kᵍᵁᵘᴊⓐᴏᴋᴚᴭк№𝔺𝔚𝔄𝓀𝒴ҡќҚқӃӄк𝙪")
-E = list("eᴇ℮єε𝔸ᴇᴜëēėĕèéêẹȩε∑ℰ𝔜Ǝ€3ᵉₑᴱеեەیَ")
-N = list("nᴏոћչջηпṅńñņṋℕℵ𝔻ᴎᴥվҢҝҤҥӈӉ𝙫")
-PUNCTUATION = [' ', '.', ',', "'", ':', ';']
-CHAR_MAP = {c: 'k' for c in K}
-CHAR_MAP.update({c: 'e' for c in E})
-CHAR_MAP.update({c: 'n' for c in N})
+# ===== FAST NORMALIZATION =====
+TRANSLATION_TABLE = str.maketrans({
+    **{c: "k" for c in "kᵏᴋκк"},
+    **{c: "e" for c in "eᴇ℮єε3"},
+    **{c: "n" for c in "nᴎηп"}
+})
 
-def strip_combining(text):
-    return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
+def normalize(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text)
+    text = text.translate(TRANSLATION_TABLE)
+    return text.lower()
 
-def full_normalize(text):
-    text = strip_combining(text)
-    return ''.join(CHAR_MAP.get(c, c) for c in text.lower())
+# ===== FAST REGEX (COMPILED ONCE) =====
+KEN_REGEX = re.compile(r"(?<![a-z])k+e+n+(?![a-z])")
 
-def contains_ken(text):
-    cleaned = full_normalize(text)
-    cleanedlist = list(cleaned)
-    case = 1
-    keen = 0
-    kcount = 0
-    for char in cleanedlist:
-        if case == 0:
-            if char == ' ':
-                case += 1
-        elif case == 1:
-            if char in K:
-                case += 1
-                kcount += 1
-            elif char != ' ':
-                kcount = keen = case = 0
-        elif case == 2:
-            if char in K:
-                kcount += 1
-            if char in E:
-                case += 1
-            elif char not in K:
-                kcount = keen = case = 0
-        elif case == 3:
-            if keen == 0 and char in E:
-                keen = 1
-            elif keen == 1 and char in N:
-                keen = 2
-            if char in N:
-                case += 1
-            elif char not in E:
-                kcount = keen = case = 0
-        elif case == 4:
-            if (char in PUNCTUATION or char == 's') and keen == 2:
-                kcount = keen = case = 0
-            if char in PUNCTUATION and keen != 2:
-                return True
-            elif char not in N and char != 's':
-                kcount = keen = case = 0
-    if case >= 4 and not (keen == 2 and kcount == 1):
-        return True
+EXCEPTIONS = {"chicken", "broken", "kenny", "heineken"}
+
+def contains_ken(text: str) -> bool:
+    normalized = normalize(text)
+    for word in normalized.split():
+        if word in EXCEPTIONS:
+            continue
+        if KEN_REGEX.search(word):
+            return True
     return False
 
-# ===== GLOBALS =====
+# ===== SPAM CACHE =====
 recent_messages = {}
-KEYWORDS = ["ken", "heineken"]
+SPAM_TIMEOUT = 10
+
+# ===== HELPERS =====
+async def log_action(guild, text):
+    channel = discord.utils.get(guild.text_channels, name=MOD_LOG_CHANNEL_NAME)
+    if channel:
+        await channel.send(text)
 
 # ===== EVENTS =====
 @bot.event
 async def on_ready():
-    print(f"{bot.user.name} is ready to go!!!!")
-    enlist_channel = discord.utils.get(bot.get_all_channels(), name=ENLIST_CHANNEL_NAME)
-    if enlist_channel:
-        async for msg in enlist_channel.history(limit=20):
-            if msg.author == bot.user and ENLIST_MESSAGE in msg.content:
-                await msg.delete()
-        await enlist_channel.send(ENLIST_MESSAGE)
+    print(f"✅ {bot.user} online")
+    await bot.tree.sync()
+    print("🌐 Slash commands synced")
 
-@bot.event
-async def on_member_join(member):
-    await member.send(f"Welcome to The Socks, {member.name}")
-
-# ===== OPTIMIZED ON_MESSAGE =====
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    user_id = message.author.id
+    now = datetime.utcnow().timestamp()
+    last = recent_messages.get(message.author.id)
 
     # ----- Anti-Spam -----
-    if user_id in recent_messages and message.content == recent_messages[user_id]:
+    if last and last["content"] == message.content and now - last["time"] < SPAM_TIMEOUT:
         await message.delete()
-        warn = await message.channel.send(f"{message.author.mention}, no spam!", delete_after=5)
-        return
-    recent_messages[user_id] = message.content
-
-    # ----- Enlist channel enforcement -----
-    if message.channel.name == ENLIST_CHANNEL_NAME:
-        if not message.content.lower().startswith("!enlist"):
-            await message.delete()
-            already_sent = False
-            async for msg in message.channel.history(limit=10):
-                if msg.author == bot.user and ENLIST_MESSAGE in msg.content:
-                    already_sent = True
-                    break
-            if not already_sent:
-                await message.channel.send(ENLIST_MESSAGE)
-            return
-
-    # ----- Ken detection -----
-    normalized_content = full_normalize(message.content)
-
-    if "heineken" in normalized_content:
-        await message.delete()
-        warn = await message.channel.send(
-            f"{message.author.mention}, it's ash, you dingus, say it right, and REMEMBER IT NEXT TIME."
+        await message.channel.send(
+            f"{message.author.mention}, no spam.",
+            delete_after=5
         )
-        await warn.delete(delay=7)
+        await log_action(
+            message.guild,
+            f"🚫 Spam deleted from {message.author}:\n```{message.content}```"
+        )
         return
 
+    recent_messages[message.author.id] = {
+        "content": message.content,
+        "time": now
+    }
+
+    # ----- Enlist Channel Lock -----
+    if message.channel.name == ENLIST_CHANNEL_NAME:
+        await message.delete()
+        await message.channel.send(ENLIST_MESSAGE, delete_after=10)
+        return
+
+    # ----- Ken Detection -----
     if contains_ken(message.content):
         await message.delete()
-        response = random.choice(ken_replies)
+        reply = random.choice(ken_replies)
         warn = await message.channel.send(
-            f"{message.author.mention}, {response}, say it right, and REMEMBER IT NEXT TIME."
+            f"{message.author.mention}, {reply}"
         )
-        await warn.delete(delay=9)
+        await warn.delete(delay=8)
+
+        await log_action(
+            message.guild,
+            f"❌ Ken detected from {message.author}:\n```{message.content}```"
+        )
         return
 
-    # ----- Keyword Alerts -----
-    if any(word in normalized_content for word in KEYWORDS):
-        mod_role = discord.utils.get(message.guild.roles, name="Mod")
-        if mod_role:
-            await message.channel.send(f"{mod_role.mention}, keyword alert: {message.author.mention}")
-
-    # ----- Process Commands -----
     await bot.process_commands(message)
 
-# ===== COMMANDS =====
-# ----- Fun -----
-@bot.command()
-async def meme(ctx):
-    """Fetch a random meme from Reddit"""
-    url = "https://meme-api.com/gimme"
+# ================= SLASH COMMANDS =================
+
+@bot.tree.command(name="meme", description="Get a random meme")
+async def meme(interaction: discord.Interaction):
+    await interaction.response.defer()
     async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            if resp.status != 200:
-                await ctx.send("❌ Couldn't fetch a meme right now.")
-                return
+        async with session.get("https://meme-api.com/gimme") as resp:
             data = await resp.json()
-            embed = discord.Embed(title=data['title'], color=discord.Color.random(), url=data['postLink'])
-            embed.set_image(url=data['url'])
-            embed.set_footer(text=f"From r/{data['subreddit']}")
-            await ctx.send(embed=embed)
 
-# ----- Utility / Info -----
-@bot.command()
-async def userinfo(ctx, member: discord.Member = None):
-    member = member or ctx.author
-    roles = [role.name for role in member.roles if role.name != "@everyone"]
-    embed = discord.Embed(title=f"User Info - {member}", color=discord.Color.blue())
-    embed.set_thumbnail(url=member.avatar.url)
-    embed.add_field(name="ID", value=member.id, inline=False)
-    embed.add_field(name="Top Role", value=member.top_role.name, inline=False)
-    embed.add_field(name="Roles", value=", ".join(roles) or "None", inline=False)
-    embed.add_field(name="Status", value=str(member.status), inline=False)
-    embed.add_field(name="Joined", value=member.joined_at.strftime("%Y-%m-%d"), inline=False)
-    await ctx.send(embed=embed)
+    embed = discord.Embed(
+        title=data["title"],
+        url=data["postLink"],
+        color=discord.Color.random()
+    )
+    embed.set_image(url=data["url"])
+    embed.set_footer(text=f"From r/{data['subreddit']}")
 
-@bot.command()
-async def serverinfo(ctx):
-    guild = ctx.guild
-    embed = discord.Embed(title=f"Server Info - {guild.name}", color=discord.Color.green())
-    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-    embed.add_field(name="Owner", value=guild.owner, inline=False)
-    embed.add_field(name="Created On", value=guild.created_at.strftime("%Y-%m-%d"), inline=False)
-    embed.add_field(name="Members", value=guild.member_count, inline=False)
-    embed.add_field(name="Roles", value=len(guild.roles), inline=False)
-    await ctx.send(embed=embed)
+    await interaction.followup.send(embed=embed)
 
-@bot.command()
-async def avatar(ctx, member: discord.Member = None):
-    member = member or ctx.author
-    embed = discord.Embed(title=f"{member}'s Avatar")
-    embed.set_image(url=member.avatar.url)
-    await ctx.send(embed=embed)
+@bot.tree.command(name="userinfo", description="Get info about a user")
+async def userinfo(
+    interaction: discord.Interaction,
+    member: discord.Member | None = None
+):
+    member = member or interaction.user
 
-@bot.command()
-async def whois(ctx, member: discord.Member = None):
-    member = member or ctx.author
-    embed = discord.Embed(title=f"WhoIs - {member}", color=discord.Color.purple())
-    embed.add_field(name="ID", value=member.id, inline=False)
-    embed.add_field(name="Nickname", value=member.nick or "None", inline=False)
-    embed.add_field(name="Top Role", value=member.top_role.name, inline=False)
-    embed.add_field(name="Status", value=str(member.status), inline=False)
-    embed.add_field(name="Joined Server", value=member.joined_at.strftime("%Y-%m-%d"), inline=False)
-    embed.add_field(name="Created Account", value=member.created_at.strftime("%Y-%m-%d"), inline=False)
-    await ctx.send(embed=embed)
+    embed = discord.Embed(
+        title=f"User Info - {member}",
+        color=discord.Color.blue()
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(name="ID", value=member.id)
+    embed.add_field(name="Top Role", value=member.top_role.name)
+    embed.add_field(name="Joined", value=member.joined_at.strftime("%Y-%m-%d"))
 
-# ----- Moderation -----
-@bot.command()
-@commands.has_permissions(kick_members=True)
-async def kick(ctx, member: discord.Member, *, reason="No reason provided"):
-    await member.kick(reason=reason)
-    await ctx.send(f"👢 {member} has been kicked.\nReason: {reason}")
+    await interaction.response.send_message(embed=embed)
 
-# Keep your existing ban, timeout, untimeout, giverole, deport, etc.
-# You can copy those from your original bot code without change.
+@bot.tree.command(name="timeout", description="Timeout a member (minutes)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def timeout(
+    interaction: discord.Interaction,
+    member: discord.Member,
+    minutes: int,
+    reason: str = "No reason provided"
+):
+    until = datetime.utcnow() + timedelta(minutes=minutes)
+    await member.timeout(until, reason=reason)
+
+    await interaction.response.send_message(
+        f"⏱️ {member.mention} muted for {minutes} minutes."
+    )
+
+    await log_action(
+        interaction.guild,
+        f"⏱️ {member} timed out by {interaction.user}\n"
+        f"Duration: {minutes} min\nReason: {reason}"
+    )
+
+@bot.tree.command(name="untimeout", description="Remove a timeout")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def untimeout(
+    interaction: discord.Interaction,
+    member: discord.Member
+):
+    await member.timeout(None)
+    await interaction.response.send_message(
+        f"✅ Timeout removed from {member.mention}"
+    )
+
+    await log_action(
+        interaction.guild,
+        f"✅ Timeout removed from {member} by {interaction.user}"
+    )
 
 # ===== RUN =====
-bot.run(TOKEN, log_handler=handler, log_level=logging.DEBUG)
+bot.run(TOKEN, log_handler=handler, log_level=logging.INFO)
