@@ -1,97 +1,69 @@
-ZaniBot
+# ZaniBot
+ZaniBot is a custom Discord bot built with **Python** and **discord.py (v2.x)**. It is designed for **server moderation, user verification, message filtering, and fun commands**, tailored specifically for my server. This is my first project, and I’m really proud of how it turned out.---
 
-ZaniBot is a custom Discord bot built with Python and discord.py (2.x).
-It focuses on moderation, verification, message filtering, and utility slash commands.
-This is my first bot project.
+## Features
 
-Features
-Moderation
+### Moderation
+- Timeout and untimeout members  
+- Ban members  
+- Purge messages (1–100 at a time)  
+- Role-based permission management  
+- Automatic mod-log for deleted messages  
 
-Slash-command based moderation
+### Message Filtering
+- Detects disguised or Unicode-normalized variants of banned words  
+- Automatically deletes messages and warns users  
+- Special-case handling for specific words (e.g., “chicken”, “kenny”, “broken”)  
 
-Timed mutes using Discord timeouts
+### Verification System
+- `/enlist` command for user verification  
+- Assigns a hidden access role  
+- Enforces rules in the verification channel  
+- Automatically cleans up enlist messages  
 
-Unmute (untimeout) support
+### Automation
+- Sends a welcome DM to new members  
+- Re-posts enlist instructions if deleted  
+- Prevents off-topic messages in verification channels  
 
-Ban and purge commands
+### Utility and Fun
+- `/meme` command for memes  
+- `/userinfo`, `/serverinfo`, `/avatar`, `/whois` utility commands  
+- Fun commands with randomized responses  
 
-Automatic mod-log logging
+---
 
-Example commands:
-/timeout @user 10
-/untimeout @user
-/purge 25
+## Required Bot Permissions
+ZaniBot requires the following permissions to operate correctly:
 
-Message Filtering
+### General
+- View Channels  
+- Read Message History  
+- Send Messages  
+- Embed Links  
 
-Detects Unicode and disguised banned words
+### Moderation
+- Manage Messages (for purging and filtering)  
+- Moderate Members (for timeouts)  
+- Ban Members  
+- Manage Roles  
 
-Uses fast normalization + precompiled regex
+### Optional (Recommended)
+- Send Messages in Threads  
+- Use External Emojis  
+- Add Reactions  
 
-Prevents false positives (chicken, kenny, broken)
+**Important:** The bot’s role must be higher than any role it needs to manage or moderate.
 
-Automatically deletes messages and warns users
+---
 
-Verification
+## Setup
 
-/enlist verification command
-
-Assigns hidden access role
-
-Locks verification channel
-
-Cleans up invalid messages automatically
-
-Automation
-
-Welcome DM on member join
-
-Anti-spam (duplicate message cooldown)
-
-Automatic moderation logging
-
-Utility & Fun
-
-/meme
-/userinfo
-/avatar
-/serverinfo
-
-Required Permissions
-
-View Channels
-
-Send Messages
-
-Read Message History
-
-Embed Links
-
-Manage Messages
-
-Moderate Members
-
-Ban Members
-
-Manage Roles
-
-Note: The bot’s role must be higher than any role it moderates.
-
-Setup
-
-Install dependencies:
-
+### Install dependencies
+```bash
 pip install -U discord.py python-dotenv aiohttp
+```
 
-Create a .env file:
+### Disclaimer
 
-DISCORD_TOKEN=your_bot_token_here
-
-Enable Message Content Intent and Server Members Intent in the Discord Developer Portal.
-
-Disclaimer
-
-This is a learning project.
-The code is not perfect or production-grade.
-
-If you use it anyway, a small credit would be appreciated.
+This is a learning project with basic code, not production-ready. If you decide to use it, a shoutout or ⭐ would be really appreciated!
